@@ -47,7 +47,7 @@ extension SQLInsertBuilder where Connection.Query.Insert == PostgreSQLInsert {
         return self
     }
 
-    public func onConflictDoNothing()
+    public func onConflictDoNothing() -> Self
     {
         insert.upsert = .upsert([],[])
         return self
