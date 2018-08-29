@@ -2,42 +2,58 @@
 public struct PostgreSQLUpsert: SQLSerializable {
     /// See `SQLUpsert`.
     public typealias Identifier = PostgreSQLIdentifier
-    
+
     /// See `SQLUpsert`.
     public typealias Expression = PostgreSQLExpression
-    
+
     /// See `SQLUpsert`.
     public static func upsert(_ columns: [PostgreSQLColumnIdentifier], _ values: [(Identifier, Expression)]) -> PostgreSQLUpsert {
         return self.init(columns: columns, values: values)
     }
-    
+
     /// See `SQLUpsert`.
     public var columns: [PostgreSQLColumnIdentifier]
-    
+
     /// See `SQLUpsert`.
     public var values: [(Identifier, Expression)]
-    
+
     /// See `SQLSerializable`.
     public func serialize(_ binds: inout [Encodable]) -> String {
         var sql: [String] = []
         sql.append("ON CONFLICT")
-        sql.append("(" + columns.map { $0.identifier }.serialize(&binds) + ")")
-        sql.append("DO UPDATE SET")
-        sql.append(values.map { $0.0.serialize(&binds) + " = " + $0.1.serialize(&binds) }.joined(separator: ", "))
+        if !columns.isEmpty {
+            sql.append("(" + columns.map { $0.identifier }.serialize(&binds) + ")")
+        }
+        if !values.isEmpty {
+            sql.append("DO UPDATE SET")
+            sql.append(values.map { $0.0.serialize(&binds) + " = " + $0.1.serialize(&binds) }.joined(separator: ", "))
+        } else {
+            sql.append("DO NOTHING")
+        }
         return sql.joined(separator: " ")
     }
 }
 
 extension SQLInsertBuilder where Connection.Query.Insert == PostgreSQLInsert {
-    /// Adds an `ON CONFLICT ... DO UPDATE SET` clause to the insert.
-    public func onConflict<T, V, E>(_ key: KeyPath<T, V>, set value: E) -> Self where
+    /// Adds an `ON CONFLICT ... DO UPDATE SET` / `ON CONFLICT DO NOTHING` clause to the insert.
+    public func onConflict<T, V, E>(_ key: KeyPath<T, V>?, set value: E?) -> Self where
         T: PostgreSQLTable, E: Encodable
     {
-        let row = SQLQueryEncoder(PostgreSQLExpression.self).encode(value)
-        let values = row.map { row -> (PostgreSQLIdentifier, PostgreSQLExpression) in
-            return (.identifier(row.key), row.value)
+        var keys: [PostgreSQLColumnIdentifier] = []
+        var values: [(PostgreSQLIdentifier, PostgreSQLExpression)] = []
+
+        if let key = key {
+            keys = [.keyPath(key)]
         }
-        insert.upsert = .upsert([.keyPath(key)], values)
+
+        if let value = value {
+            let row = SQLQueryEncoder(PostgreSQLExpression.self).encode(value)
+            values = row.map { row -> (PostgreSQLIdentifier, PostgreSQLExpression) in
+                return (.identifier(row.key), row.value)
+            }
+        }
+
+        insert.upsert = .upsert(keys, values)
         return self
     }
 }
