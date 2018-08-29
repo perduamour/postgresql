@@ -36,7 +36,7 @@ public struct PostgreSQLUpsert: SQLSerializable {
 
 extension SQLInsertBuilder where Connection.Query.Insert == PostgreSQLInsert {
     /// Adds an `ON CONFLICT ... DO UPDATE SET` / `ON CONFLICT DO NOTHING` clause to the insert.
-    public func onConflict<T, V, E>(_ key: KeyPath<T, V>, set value: E) -> Self where
+    public func onConflictDoUpdate<T, V, E>(_ key: KeyPath<T, V>, set value: E) -> Self where
         T: PostgreSQLTable, E: Encodable
     {
         let row = SQLQueryEncoder(PostgreSQLExpression.self).encode(value)
@@ -47,8 +47,14 @@ extension SQLInsertBuilder where Connection.Query.Insert == PostgreSQLInsert {
         return self
     }
 
-    public func onConflictDoNothing() -> Self
+    public func onConflictDoNothing<T, V>(_ key: KeyPath<T, V>) -> Self where
+        T: PostgreSQLTable
     {
+        insert.upsert = .upsert([.keyPath(key)],[])
+        return self
+    }
+
+    public func onConflictDoNothing() -> Self {
         insert.upsert = .upsert([],[])
         return self
     }
